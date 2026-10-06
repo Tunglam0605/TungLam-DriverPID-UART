@@ -1,0 +1,28 @@
+name: Arduino CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/arduino-lint-action@v2
+        with:
+          library-manager: update
+
+  compile-mega:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/compile-sketches@v1
+        with:
+          fqbn: arduino:avr:mega
+          platforms: |
+            - name: arduino:avr
+          libraries: |
+            - source-path: ./
+          sketch-paths: |
+            - examples
