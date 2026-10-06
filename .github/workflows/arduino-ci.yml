@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: arduino/arduino-lint-action@v2
         with:
-          library-manager: update
+          library-manager: submit
 
   compile-mega:
     runs-on: ubuntu-latest
