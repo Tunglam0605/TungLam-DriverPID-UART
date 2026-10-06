@@ -344,7 +344,9 @@ float TungLamPIDBus::stepMotor(MotorState& motor, float dtSeconds) {
 
   if (motor.current == target) return motor.current;
 
-  // Never jump directly through zero during a direction reversal.
+  // Khi đảo chiều, không cho command nhảy trực tiếp từ dương sang âm hoặc
+  // ngược lại. Motor sẽ giảm về 0 trước rồi mới tăng theo chiều mới để giảm
+  // sốc cơ khí, hạn chế dòng hãm đột ngột và làm chuyển động dễ dự đoán hơn.
   if (signsOpposite(motor.current, target)) {
     const float maxDelta = motor.deceleration * dtSeconds;
     motor.current = approach(motor.current, 0.0f, maxDelta);
@@ -476,7 +478,7 @@ uint8_t TungLamPIDBus::registeredCount() const {
 }
 
 // ============================================================================
-// 4WD MECANUM FACADE
+// LỚP ĐIỀU KHIỂN ĐẾ 4 BÁNH MECANUM
 // ============================================================================
 
 TungLamPID4WD::TungLamPID4WD(TungLamPIDBus& bus)
@@ -501,7 +503,8 @@ bool TungLamPID4WD::setMotorIDs(uint8_t m1FrontLeft,
     }
   }
 
-  // Reject duplicate addresses in the same base.
+  // Không cho phép 2 bánh dùng chung một ID vì chúng sẽ nhận cùng frame UART,
+  // làm mất khả năng điều khiển độc lập từng bánh.
   for (uint8_t i = 0; i < 4; ++i) {
     for (uint8_t j = i + 1; j < 4; ++j) {
       if (ids[i] == ids[j]) {
@@ -590,11 +593,17 @@ bool TungLamPID4WD::drive(int16_t vx, int16_t vy, int16_t wz) {
   vy = clampBody(vy);
   wz = clampBody(wz);
 
-  // Tung Lam Automation / V5 wheel convention:
-  // [M1,M2,M3,M4] = [FL,RL,RR,FR]
-  // +vx -> [+,+,+,+]
-  // +vy -> [-,+,-,+]
-  // +wz -> [-,-,+,+]
+  // Quy ước bánh kế thừa từ thư viện V5 của Tung Lâm Automation:
+  // [M1,M2,M3,M4] = [trước-trái, sau-trái, sau-phải, trước-phải].
+  //
+  // Thành phần đóng góp của từng trục:
+  // +vx -> [+,+,+,+] : cả 4 bánh cùng chiều để tiến.
+  // +vy -> [-,+,-,+] : tạo chuyển động ngang sang trái.
+  // +wz -> [-,-,+,+] : 2 bánh trái và 2 bánh phải ngược chiều để quay trái.
+  //
+  // Sau khi cộng vx/vy/wz, normalize4() sẽ scale đồng đều nếu có bánh vượt
+  // biên 255. Cách này giữ nguyên tỉ lệ vector chuyển động thay vì cắt riêng
+  // từng bánh, nhờ đó hướng chuyển động ít bị méo hơn.
   int32_t m1 = static_cast<int32_t>(vx) - vy - wz;
   int32_t m2 = static_cast<int32_t>(vx) + vy - wz;
   int32_t m3 = static_cast<int32_t>(vx) - vy + wz;
