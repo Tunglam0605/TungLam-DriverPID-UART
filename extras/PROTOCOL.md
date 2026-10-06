@@ -1,33 +1,32 @@
-# UART Protocol
+# Giao thức UART
 
-## Frame
+## Cấu trúc frame
 
-Each motor command is three bytes:
+Mỗi lệnh điều khiển một motor gồm **3 byte**:
 
-| Byte | Meaning |
+| Byte | Ý nghĩa |
 |---|---|
-| 0 | bit7 = direction, bit6..0 = motor address |
-| 1 | speed magnitude 0..255 |
-| 2 | fixed terminator 0xFF |
+| 0 | bit7 = chiều quay, bit6..0 = địa chỉ motor |
+| 1 | độ lớn tốc độ 0..255 |
+| 2 | byte kết thúc cố định 0xFF |
 
-The library uses motor IDs 1..127.
+Thư viện sử dụng địa chỉ motor từ **1..127**.
 
-## Signed command mapping
+## Ánh xạ lệnh tốc độ có dấu
 
-The public API uses signed commands:
+API công khai dùng một giá trị tốc độ có dấu thay vì bắt người dùng tự quản lý riêng SPEED và DIR:
 
-| API value | Direction bit | Speed byte |
+| Giá trị API | Bit chiều | Byte tốc độ |
 |---:|---:|---:|
 | +180 | 1 | 180 |
 | -180 | 0 | 180 |
-| 0 | previous direction | 0 |
+| 0 | giữ chiều gần nhất | 0 |
 
-Keeping the previous direction while speed is zero matches the behavior of the
-older Robot0x01 code, where direction and speed were stored independently.
+Khi command bằng 0, thư viện giữ lại bit chiều gần nhất và chỉ đưa SPEED về 0. Cách này phù hợp với logic cũ của Robot0x01, nơi chiều và tốc độ được lưu riêng.
 
-## Example
+## Ví dụ đóng gói frame
 
-For motor address 3 at +200:
+Motor ID 3 chạy chiều dương với tốc độ 200:
 
 ```text
 Byte0 = 0b10000011 = 0x83
@@ -35,7 +34,7 @@ Byte1 = 0xC8
 Byte2 = 0xFF
 ```
 
-For motor address 3 at -200:
+Motor ID 3 chạy chiều âm với tốc độ 200:
 
 ```text
 Byte0 = 0b00000011 = 0x03
@@ -43,22 +42,51 @@ Byte1 = 0xC8
 Byte2 = 0xFF
 ```
 
-## TX policy
+## Chính sách truyền TX
 
-`setTarget()` updates the desired command. `update()` advances the motion
-profile according to elapsed time and transmits only when necessary.
+`setTarget()` chỉ cập nhật tốc độ mục tiêu. `update()` mới thực hiện motion profile và quyết định có cần phát frame hay không.
 
-Three controls limit bus traffic:
+Ba tham số chính dùng để giảm tải UART:
 
-- `setMinTxIntervalMs()`
-- `setTransmitThreshold()`
-- `setRefreshPeriodMs()`
+- `setMinTxIntervalMs()`: khoảng TX tối thiểu khi command thay đổi.
+- `setTransmitThreshold()`: độ thay đổi tối thiểu để phát frame mới.
+- `setRefreshPeriodMs()`: chu kỳ gửi lại command dù giá trị không đổi.
 
-## Active reverse braking
+Nhờ đó ứng dụng có thể gọi `update()` liên tục với tần số cao mà không làm UART bị flood vô ích.
 
-`activeBrake()` / `hardBrake()` are library-side behaviors, not an extra
-UART opcode. The function briefly commands the opposite direction, then sends
-zero.
+## Đảo chiều an toàn
 
-Because this can produce high current, tune strength and pulse duration on the
-actual motor, supply, and driver.
+Khi target đổi dấu, ví dụ từ +200 sang -200, thư viện không nhảy trực tiếp qua 0:
+
+```text
++200
+  |
+  v
+giảm dần
+  |
+  v
+  0
+  |
+  v
+đổi chiều
+  |
+  v
+-200
+```
+
+Mục tiêu là giảm sốc cơ khí và tránh tạo một bước nhảy mô-men quá lớn.
+
+## Phanh ngược chủ động
+
+`activeBrake()` và `hardBrake()` **không phải opcode UART riêng**.
+
+Thư viện thực hiện:
+
+1. xác định chiều motor đang chạy;
+2. phát một command ngược chiều với độ lớn `strength`;
+3. giữ trong `pulseMs`;
+4. sau đó phát command 0.
+
+Hàm hoàn toàn không block; `update()` chịu trách nhiệm kết thúc pha hãm.
+
+> Cần tune trên động cơ, nguồn và driver thật vì hãm ngược có thể tạo dòng điện lớn.
