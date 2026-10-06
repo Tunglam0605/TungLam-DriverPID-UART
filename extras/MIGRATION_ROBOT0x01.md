@@ -1,6 +1,8 @@
-# Migration from Robot0x01
+# Chuyển đổi từ Robot0x01 sang TungLam DriverPID UART
 
-The original project used:
+## Code cũ
+
+Project Robot0x01 tự đóng frame UART trực tiếp:
 
 ```cpp
 DataTX[i][0] = (direction << 7) | (address & 0x7F);
@@ -9,7 +11,7 @@ DataTX[i][2] = 0xFF;
 Serial2.write(DataTX[i], 3);
 ```
 
-and multiple motion-specific ramp functions such as:
+Tăng tốc/giảm tốc được chia thành nhiều hàm theo từng kiểu chuyển động:
 
 ```text
 TangtocUart()
@@ -20,46 +22,78 @@ TangtocUart5()
 StopUart()
 ```
 
-The new library separates responsibilities:
+Cách này đã chạy được trên robot thật nhưng phần UART, chuyển động Mecanum và motion profile bị gắn chặt vào nhau nên khó tái sử dụng cho project khác.
+
+## Kiến trúc mới
 
 ```text
-Application / PS2
-      |
-      v
-Mecanum mixer or mechanism command
-      |
-      v
-Per-motor MotionProfile
-      |
-      v
-DriverPID UART bus
-      |
-      v
-3-byte frames
+Ứng dụng / PS2 / ROS
+        |
+        v
+Mecanum hoặc cơ cấu riêng
+        |
+        v
+Motion Profile từng motor
+        |
+        v
+TungLamPIDBus
+        |
+        v
+Khung UART 3 byte
+        |
+        v
+Driver PID
 ```
 
-## Old -> new
+## Ví dụ thay thế
+
+Đi thẳng:
 
 ```cpp
-// Old
+// Code cũ
 TienTx();
 Prepare_Data();
 
-// New
+// Code mới
 robot.forward(180);
 robot.update();
 ```
 
+Dừng mềm:
+
 ```cpp
-// Old
+// Code cũ
 StopUart();
 
-// New, ramped
+// Code mới
 robot.softStop();
+```
 
-// New, immediate
+Dừng ngay:
+
+```cpp
 robot.stop();
 ```
 
-The new ramp is time-based, so acceleration no longer depends on how fast
-`loop()` happens to run.
+Điều khiển một cơ cấu độc lập:
+
+```cpp
+pid.setMotorMotionProfile(7, 300.0f, 700.0f);
+pid.setTarget(7, 180);
+pid.update();
+```
+
+## Khác biệt quan trọng
+
+Ramp mới dựa trên **thời gian thực** thay vì số lần hàm được gọi. Vì vậy khi chương trình thêm xử lý cảm biến, PS2, LCD hay giao tiếp khác làm thay đổi tốc độ `loop()`, thời gian tăng tốc/giảm tốc vẫn gần như giữ nguyên.
+
+Ngoài ra, thư viện mới có:
+
+- zero-crossing khi đảo chiều;
+- TX scheduler;
+- refresh command định kỳ;
+- watchdog;
+- soft stop;
+- immediate stop;
+- active reverse braking;
+- lớp Mecanum 4 bánh tách riêng khỏi tầng UART.
