@@ -1,0 +1,14 @@
+TungLamPIDBus	KEYWORD1
+TungLamPID4WD	KEYWORD1
+setMotor	KEYWORD2
+setTarget	KEYWORD2
+setDefaultMotionProfile	KEYWORD2
+setMotorMotionProfile	KEYWORD2
+softStop	KEYWORD2
+stop	KEYWORD2
+emergencyStop	KEYWORD2
+activeBrake	KEYWORD2
+hardBrake	KEYWORD2
+drive	KEYWORD2
+setWheels	KEYWORD2
+update	KEYWORD2
